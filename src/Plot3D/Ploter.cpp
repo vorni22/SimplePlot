@@ -1,16 +1,3 @@
-// Ploter.cpp
-// Draws a 3-D wire-mesh surface using fixed-point (Q16.16) arithmetic.
-//
-// Coordinate conventions
-// ──────────────────────
-//   World  : right-handed, Y = up.
-//   Grid   : lies in the XZ plane centred on center_.
-//            X-axis → columns (samples_x_), Z-axis → rows (samples_y_).
-//            Y-axis = function value returned by PlotFunction::get_value().
-//   Screen : origin = top-left, Y points down.
-//
-// Q16.16 reminder: ONE = 65536.
-
 #include "Ploter.h"
 #include <stdlib.h>   // malloc / free
 
@@ -48,7 +35,7 @@ Ploter::Ploter(PlotFunction &function, uint8_t samples_x, uint8_t samples_y,
     // Auto step: aim for ~80 world-units total grid width along X.
     // 80 world-units = 80 << 16 in Q16.16.
     if (step_q16_ == 0) {
-        step_q16_ = (1LL << 15);
+        step_q16_ = (int32_t)(0.35 * 65536.0 + 0.5);
         //step_q16_ = estimate_step_q16();
     }
 
@@ -201,6 +188,7 @@ void Ploter::refresh_grid()
         if (y > f_max) f_max = y;
     }
     center_.y = (f_min >> 1) + (f_max >> 1);
+    center_.y = 0;
 
     set_orbit(angle_deg_, height_q16_);
 }
@@ -411,4 +399,67 @@ void Ploter::draw_axes(UTFT &myGLCD, const mat3_t &basis) const
 
     myGLCD.setColor(0, 0, 255);
     draw_edge(myGLCD, org, tip_z, basis);
+
+    draw_ui(myGLCD);
+}
+
+void Ploter::draw_ui(UTFT &myGLCD) const
+{
+    int32_t half_w = fx_mul(step_q16_, (int32_t)(samples_x_ - 1) << 16) >> 1;
+    int32_t half_d = fx_mul(step_q16_, (int32_t)(samples_y_ - 1) << 16) >> 1;
+
+    ivec3_t org;
+    org.x = center_.x - half_w - (step_q16_ >> 1);
+    org.y = center_.y;
+    org.z = center_.z - half_d - (step_q16_ >> 1);
+
+    char buf[64];
+
+    myGLCD.setColor(255, 255, 255);
+    myGLCD.setBackColor(0, 0, 0);
+
+    // ---- Origin with 2 digits after decimal point ----
+
+    int32_t ax = org.x;
+    int32_t ay = org.y;
+    int32_t az = org.z;
+
+    bool nx = ax < 0;
+    bool ny = ay < 0;
+    bool nz = az < 0;
+
+    if (nx) ax = -ax;
+    if (ny) ay = -ay;
+    if (nz) az = -az;
+
+    long ox_whole = ax >> 16;
+    long oy_whole = ay >> 16;
+    long oz_whole = az >> 16;
+
+    long ox_frac = (((uint32_t)(ax & 0xFFFF)) * 100UL) >> 16;
+    long oy_frac = (((uint32_t)(ay & 0xFFFF)) * 100UL) >> 16;
+    long oz_frac = (((uint32_t)(az & 0xFFFF)) * 100UL) >> 16;
+
+    sprintf(
+        buf,
+        "ORG:(%s%ld.%02ld,%s%ld.%02ld,%s%ld.%02ld)",
+        nx ? "-" : "", ox_whole, ox_frac,
+        ny ? "-" : "", oy_whole, oy_frac,
+        nz ? "-" : "", oz_whole, oz_frac
+    );
+    myGLCD.print(buf, 0, 0);
+
+    // ---- Cell size with 4 digits after decimal point ----
+
+    long step_whole = step_q16_ >> 16;
+    long step_frac =
+        (((uint32_t)(step_q16_ & 0xFFFF)) * 10000UL) >> 16;
+
+    sprintf(
+        buf,
+        "CELL:%ld.%04ld",
+        step_whole,
+        step_frac
+    );
+    myGLCD.print(buf, 0, 12);
 }

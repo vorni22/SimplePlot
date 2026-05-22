@@ -57,7 +57,7 @@ void setup() {
     keyboard.begin();
     Parser::init_buffer(rpn_tokens, 64);
     sei();
-    
+
     menu = new MenuMaster();
     menu->init_from_sd(myGLCD);
 }
@@ -80,7 +80,7 @@ void UI_logic() {
 
             delete menu;
             menu = 0;
-            plot = new Ploter(test_func, 12, 12);
+            plot = new Ploter(test_func, 16, 16);
             contr = new PlotController(*plot);
         }
     }

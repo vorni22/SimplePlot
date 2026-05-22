@@ -60,7 +60,7 @@ void PlotController::rotate_x(uint16_t x) {
 
 void PlotController::move_origin_x(uint16_t dx) {
     int32_t offset = map_axis_to_q16(dx, MIDDLE_MOVE_Y);
-    if (offset < 1200 && offset > -1200) {
+    if (offset < 1300 && offset > -1300) {
         return;
     }
 

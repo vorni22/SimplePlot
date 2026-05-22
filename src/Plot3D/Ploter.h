@@ -41,6 +41,7 @@ private:
     void refresh_grid();
 
     void draw_axes(UTFT &myGLCD, const mat3_t &basis) const;
+    void draw_ui(UTFT &myGLCD) const;
 
     // Compute a good default radius so the whole grid fits in view.
     int32_t auto_radius() const;
