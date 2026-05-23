@@ -32,11 +32,13 @@ static inline int32_t map_axis_to_q16(uint16_t value, uint16_t midpoint) {
 }
 
 
-PlotController::PlotController(Ploter &ploter) {
+PlotController::PlotController(Ploter *ploter) {
     changed_pos = true;
-    ploter_ptr = (&ploter);
+    ploter_ptr = ploter;
     angle_x = 0;
     height_y = 0;
+    last_mask_ = 0;
+    should_go_back = false;
 }
 
 void PlotController::rotate_x(uint16_t x) {
@@ -60,7 +62,7 @@ void PlotController::rotate_x(uint16_t x) {
 
 void PlotController::move_origin_x(uint16_t dx) {
     int32_t offset = map_axis_to_q16(dx, MIDDLE_MOVE_Y);
-    if (offset < 1300 && offset > -1300) {
+    if (offset < 1500 && offset > -1500) {
         return;
     }
 
@@ -111,12 +113,12 @@ void PlotController::move_origin_y(uint16_t dy) {
 }
 
 void PlotController::zoom_in() {
-    ploter_ptr->zoom_in(1LL << 16);
+    ploter_ptr->zoom_in(2000);
     changed_pos = true;
 }
 
 void PlotController::zoom_out() {
-    ploter_ptr->zoom_out(1LL << 16);
+    ploter_ptr->zoom_out(2000);
     changed_pos = true;
 }
 
@@ -132,4 +134,58 @@ void PlotController::draw(UTFT &myGLCD) {
     myGLCD.setColor(255, 255, 255);
     ploter_ptr->draw_fast(myGLCD);
     changed_pos = false;
+}
+
+void PlotController::poll_keyboard(KeyboardMatrix &keyboard) {
+    uint16_t mask = keyboard.getStateMask();
+	uint16_t pressed = (uint16_t)(mask & (uint16_t)~last_mask_);
+	last_mask_ = mask;
+
+	if (pressed == 0) {
+		return;
+	}
+
+    uint8_t zoom_in_idx = (uint8_t)(0);
+	uint16_t zoom_in_bit = (uint16_t)(1u << zoom_in_idx);
+    
+    uint8_t zoom_out_idx = (uint8_t)(1);
+	uint16_t zoom_out_bit = (uint16_t)(1u << zoom_out_idx);
+
+    uint8_t y_axis_inc_idx = (uint8_t)(2);
+	uint16_t y_axis_inc_bit = (uint16_t)(1u << y_axis_inc_idx);
+
+    uint8_t y_axis_dec_idx = (uint8_t)(3);
+	uint16_t y_axis_dec_bit = (uint16_t)(1u << y_axis_dec_idx);
+
+    uint8_t exit_idx = (uint8_t)(15);
+	uint16_t exit_bit = (uint16_t)(1u << exit_idx);
+
+    if (pressed & zoom_in_bit) {
+		zoom_in();
+	}
+
+    if (pressed & zoom_out_bit) {
+        zoom_out();
+    }
+
+    if (pressed & y_axis_inc_bit) {
+		add_to_y_axis_scale(6000LL);
+	}
+
+    if (pressed & y_axis_dec_bit) {
+        add_to_y_axis_scale(-6000LL);
+    }
+
+    if (pressed & exit_bit) {
+        should_go_back = true;
+    }
+}
+
+void PlotController::add_to_y_axis_scale(int32_t add) {
+    ploter_ptr->add_to_y_axis_scale(add);
+    changed_pos = true;
+}
+
+bool PlotController::go_back() {
+    return should_go_back;
 }

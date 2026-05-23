@@ -50,6 +50,11 @@ void tft_draw_center_square(uint16_t size, uint16_t color) {
     myGLCD.fillRect(x, y, x + size - 1, y + size - 1);
 }
 
+void init_UI() {
+    menu = new MenuMaster();
+    menu->init_from_sd(myGLCD);
+}
+
 void setup() {
     usart_init(9600);
     adc_init_freerun_interrupt();
@@ -58,8 +63,7 @@ void setup() {
     Parser::init_buffer(rpn_tokens, 64);
     sei();
 
-    menu = new MenuMaster();
-    menu->init_from_sd(myGLCD);
+    init_UI();
 }
 
 void UI_logic() {
@@ -81,7 +85,7 @@ void UI_logic() {
             delete menu;
             menu = 0;
             plot = new Ploter(test_func, 16, 16);
-            contr = new PlotController(*plot);
+            contr = new PlotController(plot);
         }
     }
 }
@@ -102,6 +106,16 @@ void loop() {
 
         contr->move_origin_x(dx);
         contr->move_origin_y(dy);
+
+        contr->poll_keyboard(keyboard);
+
+        if (contr->go_back()) {
+            delete contr;
+            delete plot;
+            contr = 0;
+            plot = 0;
+            init_UI();
+        }
     }
 
     myGLCD.setColor(255, 255, 255);
