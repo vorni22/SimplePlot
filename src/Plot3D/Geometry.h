@@ -13,7 +13,7 @@ typedef struct { int32_t x, y;          } ivec2_t;
 typedef struct { int32_t x, y, z;       } ivec3_t;
 typedef struct { int32_t x, y, z, w;    } ivec4_t;
 typedef struct { ivec3_t pos, target;   } camera_t;
-typedef struct { int32_t m[3][3];       } mat3_t;   // Q16.16 column-major
+typedef struct { int32_t m[3][3];       } mat3_t; 
 
 // ── SCALAR ───────────────────────────────────────────────────
 int32_t fx_mul(int32_t a, int32_t b);       // Q16.16 × Q16.16 → Q16.16
@@ -32,10 +32,6 @@ ivec3_t vec_cross   (ivec3_t a, ivec3_t b);
 ivec3_t vec_norm_q16(ivec3_t v);
 mat3_t  look_at_q16 (camera_t cam);
 
-// ── GRAPHICS ─────────────────────────────────────────────────
-// Project world-space point p → screen pixel (sx, sy).
-// focal: focal length in pixels (plain int16, e.g. display height/2).
-// Returns false if point is behind the camera.
 bool project_point(const ivec3_t &p, const camera_t &cam, const mat3_t &basis,
                    int16_t cx, int16_t cy, int16_t focal,
                    int16_t &sx, int16_t &sy);

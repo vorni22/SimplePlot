@@ -7,24 +7,17 @@
 #include <math.h>
 #include <limits.h>
 
-// ─────────────────────────────────────────────────────────────
-// SCALAR
-// ─────────────────────────────────────────────────────────────
-
-// Q16.16 × Q16.16 → Q16.16   (uses 64-bit intermediate)
 int32_t fx_mul(int32_t a, int32_t b)
 {
     return (int32_t)(((int64_t)a * b) >> 16);
 }
 
-// Q16.16 / Q16.16 → Q16.16
 int32_t fx_div(int32_t a, int32_t b)
 {
     if (b == 0) return (a >= 0) ? INT32_MAX : INT32_MIN;
     return (int32_t)(((int64_t)a << 16) / b);
 }
 
-// Sine table: sin(0°)…sin(90°) in Q16.16, 1-degree steps (91 entries)
 static const int32_t sin_table[91] = {
          0,   1143,   2287,   3429,   4571,   5711,   6850,   7986,
       9120,  10252,  11380,  12504,  13625,  14742,  15854,  16961,
@@ -42,7 +35,7 @@ static const int32_t sin_table[91] = {
 
 int32_t sin_deg_q16(int16_t deg)
 {
-    deg = ((deg % 360) + 360) % 360;   // normalise 0…359
+    deg = ((deg % 360) + 360) % 360;
     if (deg <= 90)  return  sin_table[deg];
     if (deg <= 180) return  sin_table[180 - deg];
     if (deg <= 270) return -sin_table[deg - 180];
@@ -98,18 +91,11 @@ int32_t fx_pow_q16(int32_t base_q16, int32_t exp_q16)
     return clamp_q16(pow(b, e));
 }
 
-// ─────────────────────────────────────────────────────────────
-// VECTOR
-// ─────────────────────────────────────────────────────────────
-
 ivec3_t vec_sub(ivec3_t a, ivec3_t b)
 {
     return { a.x - b.x, a.y - b.y, a.z - b.z };
 }
 
-// Cross product of two Q16.16 vectors → result also Q16.16
-// cross = (a × b), each component: a.y*b.z - a.z*b.y etc.
-// To avoid overflow we shift each 64-bit product right by 16 bits.
 ivec3_t vec_cross(ivec3_t a, ivec3_t b)
 {
     ivec3_t r;
@@ -119,23 +105,18 @@ ivec3_t vec_cross(ivec3_t a, ivec3_t b)
     return r;
 }
 
-// Magnitude squared in Q32.32 (before shifting) → we only need Q16.16 length
-// Uses Newton-Raphson sqrt on 64-bit.
 static int32_t vec_len_q16(ivec3_t v)
 {
-    int64_t lsq = (int64_t)v.x*v.x + (int64_t)v.y*v.y + (int64_t)v.z*v.z; // Q32.32
+    int64_t lsq = (int64_t)v.x*v.x + (int64_t)v.y*v.y + (int64_t)v.z*v.z; 
     if (lsq <= 0) return 0;
 
-    // Work entirely in Q32.32, take sqrt, result is Q16.16
-    // sqrt(Q32.32) = Q16.16  ✓
     int64_t r = lsq >> 32;
-    if (r == 0) r = 1;  // sub-unit: clamp, vec_norm will handle it
+    if (r == 0) r = 1;
     int64_t s = r, s1 = (s + 1) >> 1;
     while (s1 < s) { s = s1; s1 = (s + r / s) >> 1; }
     return (int32_t)(s << 16);
 }
 
-// Returns unit vector (Q16.16) or zero vector if degenerate
 ivec3_t vec_norm_q16(ivec3_t v)
 {
     int32_t len = vec_len_q16(v);
@@ -147,38 +128,21 @@ ivec3_t vec_norm_q16(ivec3_t v)
     return r;
 }
 
-// ─────────────────────────────────────────────────────────────
-// CAMERA BASIS  (right-handed, Y-up world)
-// ─────────────────────────────────────────────────────────────
-//
-// Returns a 3×3 matrix whose columns are [right, up, forward],
-// all unit vectors in Q16.16.
-//   forward = normalize(target - pos)
-//   right   = normalize(forward × world_up)
-//   up      = right × forward        (already unit)
-//
 mat3_t look_at_q16(camera_t cam)
 {
     ivec3_t fwd = vec_norm_q16(vec_sub(cam.target, cam.pos));
 
-    // Gram-Schmidt: project world_up (0,1,0) onto the plane perpendicular to fwd
-    // up_raw = world_up - dot(world_up, fwd) * fwd
-    // dot(world_up=(0,1,0), fwd) = fwd.y
     int32_t d = fwd.y;
     ivec3_t up_raw;
     up_raw.x =              - fx_mul(d, fwd.x);
     up_raw.y = (1LL << 16)    - fx_mul(d, fwd.y);
     up_raw.z =              - fx_mul(d, fwd.z);
 
-    // Degenerate case: camera looking straight up or down
-    // Fall back to Z-up hint
     ivec3_t up;
     int32_t up_len_sq = fx_mul(up_raw.x, up_raw.x)
                       + fx_mul(up_raw.y, up_raw.y)
                       + fx_mul(up_raw.z, up_raw.z);
-    if (up_len_sq < 256) {   // ~0.002 — essentially zero
-        // Camera pointing straight up/down: use world Z as up hint
-        // up_raw = (0,0,1) - dot((0,0,1), fwd)*fwd = -fwd.z*fwd, with z component = 1 - fwd.z²
+    if (up_len_sq < 256) {
         up_raw.x = -fx_mul(fwd.z, fwd.x);
         up_raw.y = -fx_mul(fwd.z, fwd.y);
         up_raw.z = (1LL << 16) - fx_mul(fwd.z, fwd.z);
@@ -196,18 +160,6 @@ mat3_t look_at_q16(camera_t cam)
     return m;
 }
 
-// ─────────────────────────────────────────────────────────────
-// PROJECTION
-// ─────────────────────────────────────────────────────────────
-//
-// Projects world-space point p (Q16.16) into screen pixel (sx, sy).
-// Returns false if the point is behind the camera (should not be drawn).
-//
-// Pipeline:
-//   1. Translate: p_rel = p - cam.pos
-//   2. Rotate into view space using basis
-//   3. Perspective divide:  sx = cx + focal * view.x / view.z
-//
 bool project_point(const ivec3_t &p, const camera_t &cam, const mat3_t &basis,
                    int16_t cx, int16_t cy, int16_t focal,
                    int16_t &sx, int16_t &sy)
@@ -228,10 +180,6 @@ bool project_point(const ivec3_t &p, const camera_t &cam, const mat3_t &basis,
     return true;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Cohen-Sutherland line clipping
-// ─────────────────────────────────────────────────────────────
-
 #define CS_LEFT   1
 #define CS_RIGHT  2
 #define CS_BOTTOM 4
@@ -247,8 +195,6 @@ static uint8_t cs_code(int32_t x, int32_t y, int32_t xmin, int32_t xmax, int32_t
     return c;
 }
 
-// Clips line (x0,y0)-(x1,y1) to [xmin,xmax]×[ymin,ymax].
-// Returns true if any part of the line is visible; modifies coords in place.
 bool clip_line(int32_t &x0, int32_t &y0, int32_t &x1, int32_t &y1)
 {
     uint8_t c0 = cs_code(x0, y0, 0, SCREEN_W - 1, 0, SCREEN_H - 1);

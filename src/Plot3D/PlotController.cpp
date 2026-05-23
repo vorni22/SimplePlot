@@ -66,8 +66,6 @@ void PlotController::move_origin_x(uint16_t dx) {
         return;
     }
 
-    printf("dx==%ld\n", offset);
-
     origin_x += offset;
     ploter_ptr->set_center({ origin_x, 0, origin_z });
     changed_pos = true;
